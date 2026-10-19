@@ -108,6 +108,20 @@ export default class PrayerTimePreferences extends ExtensionPreferences {
 
         group.add(customLocationRow);
 
+        const locationRefreshes = [
+            { id: "always", name: _("Always on") },
+            { id: "hourly", name: _("Hourly") },
+            { id: "6h", name: _("Every 6 hours") },
+            { id: "daily", name: _("Daily") },
+        ];
+        const locationRefreshRow = new Adw.ComboRow({
+            title: _("Automatic location refresh"),
+            subtitle: _('How often to update the automatic location. "Always on" keeps the system location indicator active.'),
+            model: new Gtk.StringList({ strings: locationRefreshes.map((r) => r.name) }),
+        });
+        group.add(locationRefreshRow);
+        this.#bindMapping(gSettings, "location-refresh", locationRefreshRow, locationRefreshes);
+
         const presetMethods = [
             { id: "mwl", name: _("Muslim World League (London)") },
             { id: "egypt", name: _("Egyptian General Authority of Survey") },
