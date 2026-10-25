@@ -34,12 +34,11 @@
                 <summary>Automatic location refresh</summary>
                 <default>'daily'</default>
                 <choices>
-                    <choice value='always'/>
                     <choice value='hourly'/>
                     <choice value='6h'/>
                     <choice value='daily'/>
                 </choices>
-                <description>How often the automatic location is updated. "always" keeps the location service running continuously.</description>
+                <description>How often the automatic location is updated.</description>
             </key>
 
             <key name="preset-methods" type="s">

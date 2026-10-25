@@ -2,8 +2,8 @@ import Geoclue from "gi://Geoclue";
 import GObject from "gi://GObject";
 import GLib from "gi://GLib";
 
-// seconds between location updates, 0 keeps the GeoClue client running and follows location changes live
-export const LOCATION_REFRESH_SECONDS = { always: 0, hourly: 3600, "6h": 6 * 3600, daily: 24 * 3600 };
+// seconds between location updates
+export const LOCATION_REFRESH_SECONDS = { hourly: 3600, "6h": 6 * 3600, daily: 24 * 3600 };
 
 export class GeoclueService {
     constructor(extensionId, refreshSchedule, refreshSeconds) {
@@ -11,8 +11,6 @@ export class GeoclueService {
         this._refreshScheduleMain = refreshSchedule;
         this._refreshSeconds = refreshSeconds;
 
-        this._geoclueProxy = null;
-        this._signalId = null;
         this._fetchedAt = 0;
         this._timerId = null;
         this._destroyed = false;
@@ -21,7 +19,7 @@ export class GeoclueService {
     }
 
     _isStale() {
-        return this._refreshSeconds > 0 && GLib.get_real_time() - this._fetchedAt >= this._refreshSeconds * 1e6;
+        return GLib.get_real_time() - this._fetchedAt >= this._refreshSeconds * 1e6;
     }
 
     // timers don't count time spent suspended, so a stale location is also refreshed lazily by start() when the schedule is recomputed after wake
@@ -46,9 +44,8 @@ export class GeoclueService {
         if (this._startPromise) return this._startPromise;
         if (this.currentLocation && !this._isStale()) return Promise.resolve(this.currentLocation);
 
-        const live = this._refreshSeconds === 0;
         this._startPromise = new Promise((resolve, reject) => {
-            Geoclue.Simple.new_with_thresholds(this._extensionId, Geoclue.AccuracyLevel.NEIGHBORHOOD, live ? 600 : 0, live ? 5000 : 0, null, (source, result) => {
+            Geoclue.Simple.new_with_thresholds(this._extensionId, Geoclue.AccuracyLevel.NEIGHBORHOOD, 0, 0, null, (source, result) => {
                 this._startPromise = null;
                 try {
                     const proxy = Geoclue.Simple.new_with_thresholds_finish(result);
@@ -57,30 +54,21 @@ export class GeoclueService {
                     this.currentLocation = { latitude: location.latitude, longitude: location.longitude };
                     this._fetchedAt = GLib.get_real_time();
 
-                    if (live) {
-                        this._geoclueProxy = proxy;
-                        this._signalId = proxy.connect("notify::location", (service) => {
-                            const newLocation = service.get_location();
-                            this.currentLocation = { latitude: newLocation.latitude, longitude: newLocation.longitude };
-                            this._refreshScheduleMain();
-                        });
-                    } else {
-                        this._scheduleRefresh();
-                        // stop the client so the system location indicator turns off between updates
-                        proxy.get_client().call_stop(null, (client, stopResult) => {
-                            try {
-                                client.call_stop_finish(stopResult);
-                            } catch (e) {
-                                console.warn(`[${this._extensionId}]: Failed to stop GeoClue client:`, e);
-                            }
-                        });
-                    }
+                    this._scheduleRefresh();
+                    // stop the client so the system location indicator turns off between updates
+                    proxy.get_client().call_stop(null, (client, stopResult) => {
+                        try {
+                            client.call_stop_finish(stopResult);
+                        } catch (e) {
+                            console.warn(`[${this._extensionId}]: Failed to stop GeoClue client:`, e);
+                        }
+                    });
 
                     resolve(this.currentLocation);
                 } catch (e) {
                     // a failed refresh keeps the last known location and tries again later
                     if (this.currentLocation) {
-                        if (!live) this._scheduleRefresh();
+                        this._scheduleRefresh();
                         resolve(this.currentLocation);
                     } else reject(e);
                 }
@@ -94,13 +82,6 @@ export class GeoclueService {
         if (this._timerId) {
             GLib.Source.remove(this._timerId);
             this._timerId = null;
-        }
-        if (this._geoclueProxy) {
-            if (this._signalId) {
-                this._geoclueProxy.disconnect(this._signalId);
-                this._signalId = null;
-            }
-            this._geoclueProxy = null;
         }
         this.currentLocation = null;
         this._fetchedAt = 0;
